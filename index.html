@@ -216,29 +216,39 @@
       return Math.random()*(cw - wordWidth);
     }
 
+    // === REPLACE: FallingWord 클래스 전체 ===
     class FallingWord {
-      constructor(text){
-        this.text=text; this.fontSize=24; this.font=`${this.fontSize}px system-ui, Apple SD Gothic Neo, Noto Sans KR, sans-serif`;
+    constructor(text){
+        this.text=text;
+        this.fontSize=24;
+        this.font=`${this.fontSize}px system-ui, Apple SD Gothic Neo, Noto Sans KR, sans-serif`;
         ctx.font=this.font; const m=ctx.measureText(text); this.width=m.width;
-        this.x=findNonOverlappingPosition(this.width); this.y=-this.fontSize;
-        this.baseSpeed=getLevelConfig(gameState.level).speed; this.speed=this.baseSpeed; this.spawnTime=Date.now(); this.isTarget=false;
-      }
-      update(dt){
-        const elapsed=(Date.now()-this.spawnTime)/1000;
-        this.speed=this.baseSpeed*(1+GAME_CONFIG.WORD_ACCELERATION*elapsed);
-        const pps=(this.speed/100)*window.innerHeight;
-        this.y += pps*(dt/1000);
-      }
-      draw(){
+        this.x=findNonOverlappingPosition(this.width);
+        this.y=-this.fontSize;
+        this.baseSpeed=getLevelConfig(gameState.level).speed;
+        this.speed=this.baseSpeed;
+        this.age=0;            // 누적 진행 시간(초) - 일시정지 영향 없음
+        this.isTarget=false;
+    }
+    update(dt){              // dt(ms)
+        const d = Math.max(0, dt/1000);
+        this.age += d;
+        this.speed = this.baseSpeed * (1 + GAME_CONFIG.WORD_ACCELERATION * this.age);
+        const pps = (this.speed/100) * window.innerHeight;
+        this.y += pps * d;
+    }
+    draw(){
         ctx.font=this.font;
-        let color=this.isTarget ? (gameState.isColorBlindMode ? '#000000' : '#667eea') : (gameState.isColorBlindMode ? '#4a5568' : '#5a67d8');
+        let color=this.isTarget ? (gameState.isColorBlindMode ? '#000000' : '#667eea')
+                                : (gameState.isColorBlindMode ? '#4a5568' : '#5a67d8');
         const dangerZone = canvas.height*0.85;
         if(this.y>dangerZone) color = gameState.isColorBlindMode ? '#000000' : '#ff6b6b';
         ctx.fillStyle=color; ctx.fillText(this.text, this.x, this.y);
         if(this.isTarget){ ctx.strokeStyle=color; ctx.lineWidth=2; ctx.strokeRect(this.x-5, this.y-this.fontSize-5, this.width+10, this.fontSize+10); }
-      }
-      isAtBottom(){ return this.y > canvas.height*0.9; }
     }
+    isAtBottom(){ return this.y > canvas.height*0.9; }
+    }
+
 
     function calculateScore(word, clearTime){
       const base = GAME_CONFIG.SCORE.BASE + GAME_CONFIG.SCORE.PER_CHAR*word.text.length;
@@ -288,20 +298,16 @@
       document.body.appendChild(d);
     }
 
+// === REPLACE: handleInput 함수 ===
     function handleInput(e){
-      if (e && e.key === ' ') {
-        const now=Date.now();
-        if(now - gameState.lastSpaceTime < 500){ gameState.spaceCount++; if(gameState.spaceCount>=2){ pauseGame(); gameState.spaceCount=0; e.preventDefault(); return; } }
-        else gameState.spaceCount=1;
-        gameState.lastSpaceTime=now; e.preventDefault(); return;
-      }
-      if (e && e.key !== 'Enter') return;
-      const input = hidInput.value.trim(); if(!input.length) return;
-      gameState.totalInputs++;
-      if(gameState.targetWord && input===gameState.targetWord.text){ handleWordComplete(gameState.targetWord); hidInput.value=''; return; }
-      for(const w of gameState.words){ if(input===w.text){ handleWordComplete(w); hidInput.value=''; return; } }
-      gameState.combo=0; errorTick(); hidInput.value=''; updateUI();
+    if(e && e.key !== 'Enter') return;
+    const input = hidInput.value.trim(); if(!input.length) return;
+    gameState.totalInputs++;
+    if(gameState.targetWord && input===gameState.targetWord.text){ handleWordComplete(gameState.targetWord); hidInput.value=''; return; }
+    for(const w of gameState.words){ if(input===w.text){ handleWordComplete(w); hidInput.value=''; return; } }
+    gameState.combo=0; errorTick(); hidInput.value=''; updateUI();
     }
+
 
     function saveGameStats(){
       const s=loadStats();
@@ -323,23 +329,31 @@
       if(s.recentAccuracies.length){ const avg=Math.round(s.recentAccuracies.reduce((a,b)=>a+b,0)/s.recentAccuracies.length); recentAccEl.textContent=avg+'%'; }
     }
 
-    let lastTime=0;
+    // === REPLACE: gameLoop 전체 ===
+    let lastTime = 0;
     function gameLoop(t){
-      const dt=t-lastTime; lastTime=t;
-      if(!gameState.isGameOver && !gameState.isPaused && gameState.isGameStarted){
-        if(canvas.width!==canvas.offsetWidth || canvas.height!==canvas.offsetHeight){ canvas.width=canvas.offsetWidth; canvas.height=canvas.offsetHeight; }
+    if(lastTime === 0){ lastTime = t; requestAnimationFrame(gameLoop); return; }
+    const dt = Math.min(t - lastTime, 100); // 최대 100ms로 제한(일시정지/탭복귀 급가속 방지)
+    lastTime = t;
+
+    if(!gameState.isGameOver && !gameState.isPaused && gameState.isGameStarted){
+        if(canvas.width!==canvas.offsetWidth || canvas.height!==canvas.offsetHeight){
+        canvas.width=canvas.offsetWidth; canvas.height=canvas.offsetHeight;
+        }
         ctx.clearRect(0,0,canvas.width,canvas.height);
         const bottom=canvas.height*0.9;
         ctx.strokeStyle = gameState.isColorBlindMode ? '#000000' : '#ff6b6b';
         ctx.lineWidth=3; ctx.beginPath(); ctx.moveTo(0,bottom); ctx.lineTo(canvas.width,bottom); ctx.stroke();
+
         spawnWord();
         for(let i=gameState.words.length-1;i>=0;i--){
-          const w=gameState.words[i]; w.update(dt); w.draw();
-          if(w.isAtBottom()){ gameState.words.splice(i,1); handleMiss(); updateTargetWord(); }
+        const w=gameState.words[i]; w.update(dt); w.draw();
+        if(w.isAtBottom()){ gameState.words.splice(i,1); handleMiss(); updateTargetWord(); }
         }
-      }
-      requestAnimationFrame(gameLoop);
     }
+    requestAnimationFrame(gameLoop);
+    }
+
 
     function startBGM(){
       if(!bgmEl) return;
@@ -384,7 +398,20 @@
     document.addEventListener('click', ()=>{ if(!gameState.isGameOver && !gameState.isPaused && gameState.isGameStarted) hidInput.focus(); });
     document.addEventListener('keydown', e=>{ if(e.key==='Escape') pauseGame(); else if(e.key==='F5' || (e.ctrlKey && e.key==='r')){ e.preventDefault(); restartGame(); } });
     window.addEventListener('resize', ()=>{ canvas.width=canvas.offsetWidth; canvas.height=canvas.offsetHeight; });
-
+    let __lastSpaceAt = 0, __spaceCnt = 0;
+    document.addEventListener('keydown', (e) => {
+    if (e.key === ' ') {
+        const now = Date.now();
+        if (now - __lastSpaceAt < 500) { __spaceCnt++; }
+        else { __spaceCnt = 1; }
+        __lastSpaceAt = now;
+        if (__spaceCnt >= 2) {
+        e.preventDefault();
+        pauseGame();  // 일시정지/재개 + BGM 처리
+        __spaceCnt = 0;
+        }
+    }
+    });
     function initGame(){ canvas.width=canvas.offsetWidth; canvas.height=canvas.offsetHeight; updateUI(); hidInput.focus(); requestAnimationFrame(gameLoop); }
     window.addEventListener('load', initGame);
 
