@@ -15,7 +15,7 @@
   .row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
   #canvas{width:100%;flex:1;display:block;background:transparent;margin:10px}
   .badge{padding:6px 12px;border-radius:999px;background:linear-gradient(135deg,#ff9a9e 0%,#fecfef 100%);font-size:12px;font-weight:600;color:#fff;box-shadow:0 2px 8px rgba(0,0,0,.08)}
-  footer{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;font-size:12px;color:#5a67d8;font-weight:500}
+  footer{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;font-size:14px;color:#5a67d8;font-weight:500}
   .target{color:#4f46e5;font-weight:700}
   .game-over,.paused{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);background:rgba(255,255,255,.95);text-align:center;z-index:1000}
   .game-over{padding:36px;border-radius:24px;box-shadow:0 10px 30px rgba(0,0,0,.2);border:3px solid #ff6b6b;color:#ff4757}
@@ -60,7 +60,7 @@
   <footer>
     <div>타겟: <span id="targetWord" class="target">-</span></div>
     <div>뜻: <span id="targetMeaning" class="target">-</span></div>
-    <div class="badge">완성 글자 단위 입력</div>
+    <div class="badge">단어 입력후 엔터</div>
   </footer>
 </div>
 
@@ -76,7 +76,7 @@
 <div id="startPopup" class="start-popup">
   <div class="start-content">
     <h2 style="margin-bottom:18px;font-size:28px"> 💜사고도구어 타자게임 ⌨️</h2>
-    <p style="font-size:16px;line-height:1.6;margin-bottom:14px">CSV의 seq 순서대로 떨어집니다. (레벨: 1·2=2글자, 3=2·3글자, 4+=2·3·4글자)</p>
+    <p style="font-size:16px;line-height:1.6;margin-bottom:14px">떨어지는 단어를 입력하면 사라져요!</p>
     <button class="start-btn" id="startBtn">🚀 게임 시작하기</button>
   </div>
 </div>
@@ -471,3 +471,4 @@ function errorTick(){ if(gameState.isMuted) return; const o=sfxCtx.createOscilla
 </script>
 </body>
 </html>
+
