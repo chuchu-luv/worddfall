@@ -23,7 +23,6 @@
   .start-popup{position:fixed;inset:0;background:rgba(0,0,0,.8);display:flex;justify-content:center;align-items:center;z-index:2000}
   .start-content{background:rgba(255,255,255,.95);padding:46px;border-radius:28px;text-align:center;box-shadow:0 15px 40px rgba(0,0,0,.3);border:3px solid rgba(255,255,255,.5);color:#5a67d8;max-width:520px}
   .start-btn{background:linear-gradient(135deg,#667eea 0%,#764ba2 100%);border:none;color:#fff;padding:14px 28px;border-radius:24px;cursor:pointer;font-size:18px;font-weight:700;box-shadow:0 6px 20px rgba(0,0,0,.2);transition:.2s;margin-top:18px}
-  /* CSV 업로드 버튼 */
   .filebar{display:flex;gap:8px;align-items:center}
   input[type="file"]{font-size:12px}
 </style>
@@ -77,8 +76,7 @@
 <div id="startPopup" class="start-popup">
   <div class="start-content">
     <h2 style="margin-bottom:18px;font-size:28px"> 💜사고도구어 타자게임 ⌨️</h2>
-    <p style="font-size:16px;line-height:1.6;margin-bottom:14px">CSV의 seq 순서대로 단어가 떨어집니다.</p>
-    <p style="font-size:14px;color:#8b5cf6;margin-bottom:22px">스페이스바 두 번: 일시정지/재시작</p>
+    <p style="font-size:16px;line-height:1.6;margin-bottom:14px">CSV의 seq 순서대로 떨어집니다. (레벨: 1·2=2글자, 3=2·3글자, 4+=2·3·4글자)</p>
     <button class="start-btn" id="startBtn">🚀 게임 시작하기</button>
   </div>
 </div>
@@ -87,7 +85,7 @@
 /* ===== 설정 ===== */
 const GAME_CONFIG = {
   INITIAL_HP:5, WORD_ACCELERATION:.12, SPAWN_HISTORY_TIME:2000,
-  LEVELS:{1:{speed:10,spawnInterval:2.2,maxWords:2},2:{speed:13,spawnInterval:1.8,maxWords:3},3:{speed:16,spawnInterval:1.6,maxWords:4},4:{speed:20,spawnInterval:1.4,maxWords:5}},
+  LEVELS:{1:{speed:10,spawnInterval:2.2,maxWords:2},2:{speed:13,spawnInterval:1.9,maxWords:3},3:{speed:16,spawnInterval:1.6,maxWords:4},4:{speed:20,spawnInterval:1.4,maxWords:5}},
   SCORE:{BASE:10,PER_CHAR:2,SPEED_BONUS_MAX:2.0,SPEED_BONUS_MULT:5,PERFECT_BONUS:5,COMBO_THRESHOLD:10,COMBO_MULTIPLIER:.2}
 };
 const BGM_VOLUME=.3;
@@ -100,38 +98,53 @@ let MEANINGS = {};       // wordNorm -> meaning
 /* ===== 유틸 ===== */
 function normalizeKey(s){ return (s||'').normalize('NFC').replace(/\s+/g,'').trim(); }
 
-/* RFC4180 근접 CSV 파서 */
+/* ---- 인코딩 자동 판별(UTF-8 ↔ EUC-KR) ---- */
+function decodeKorean(buffer){
+  // 1) UTF-8 시도
+  let txt = new TextDecoder('utf-8',{fatal:false}).decode(buffer);
+  const badU = (txt.match(/\uFFFD/g)||[]).length;
+  const hanU = (txt.match(/[가-힣]/g)||[]).length;
+
+  // 2) EUC-KR 시도
+  let txtKR = '';
+  try{ txtKR = new TextDecoder('euc-kr',{fatal:false}).decode(buffer);}catch(_){}
+
+  if(!txtKR) return txt;
+
+  const badK = (txtKR.match(/\uFFFD/g)||[]).length;
+  const hanK = (txtKR.match(/[가-힣]/g)||[]).length;
+
+  // ‘�’가 적고 한글이 더 많은 쪽 선택
+  if (badK < badU || hanK > hanU) return txtKR;
+  return txt;
+}
+
+/* ---- CSV 파서(RFC4180 근접) ---- */
 function parseCSV(text, sep=','){
-  text = text.replace(/^\uFEFF/,''); // BOM
+  text = text.replace(/^\uFEFF/,''); // BOM 제거
   const rows=[]; let i=0, cur='', row=[], inQ=false;
   while(i<text.length){
     const c=text[i];
     if(inQ){
-      if(c==='"'){
-        if(text[i+1]==='"'){ cur+='"'; i+=2; continue; }
-        inQ=false; i++; continue;
-      }
+      if(c==='"'){ if(text[i+1]==='"'){cur+='"'; i+=2; continue;} inQ=false; i++; continue; }
       cur+=c; i++; continue;
     }
     if(c==='"'){ inQ=true; i++; continue; }
     if(c===sep){ row.push(cur); cur=''; i++; continue; }
-    if(c==='\r' || c==='\n'){
-      row.push(cur); cur=''; rows.push(row); row=[];
-      if(c==='\r' && text[i+1]==='\n') i+=2; else i++;
-      continue;
-    }
+    if(c==='\r' || c==='\n'){ row.push(cur); cur=''; rows.push(row); row=[]; if(c==='\r'&&text[i+1]==='\n') i+=2; else i++; continue; }
     cur+=c; i++;
   }
-  if(cur.length || row.length){ row.push(cur); rows.push(row); }
+  if(cur.length||row.length){ row.push(cur); rows.push(row); }
   return rows.map(r=>r.map(s=>s.trim()));
 }
 
 /* ===== CSV 로드: seq,word,meaning,len ===== */
 async function tryFetchCSV(){
   try{
-    const res = await fetch('words2.csv', { cache:'no-store' });
+    const res = await fetch('words2.csv',{cache:'no-store'});
     if(!res.ok) return false;
-    const raw = await res.text();
+    const buf = await res.arrayBuffer();
+    const raw = decodeKorean(buf);
     loadFromCSVText(raw);
     return true;
   }catch(e){ return false; }
@@ -144,24 +157,23 @@ function loadFromCSVText(raw){
     seq: header.findIndex(h=>/^seq$|^순번$/.test(h)),
     word: header.findIndex(h=>/^word$|^단어$/.test(h)),
     meaning: header.findIndex(h=>/^meaning$|^뜻$/.test(h)),
-    len: header.findIndex(h=>/^len$|^글자수$/.test(h)),
+    len: header.findIndex(h=>/^len$|^글자수$/.test(h))
   };
   if(idx.seq<0 || idx.word<0 || idx.meaning<0){ alert('CSV 헤더를 확인하세요: seq,word,meaning,len'); return; }
 
-  ENTRIES = rows
-    .map(r=>{
+  ENTRIES = rows.map(r=>{
       const seq = Number((r[idx.seq]||'').replace(/[^\d]/g,''));
-      const word = (r[idx.word]||'').trim();
-      const meaning = (r[idx.meaning]||'').replace(/\r/g,'').trim();
+      const word = normalizeKey(r[idx.word]||'');
+      const meaning = String(r[idx.meaning]||'').replace(/\r/g,'').trim();
       const len = idx.len>=0 ? Number((r[idx.len]||'').replace(/[^\d]/g,'')) : [...word].length;
-      return { seq, word: normalizeKey(word), meaning, len };
+      return {seq, word, meaning, len};
     })
-    .filter(e=>e.seq>0 && e.word);
+    .filter(e=>e.seq>0 && e.word && e.len>=1);
 
   ENTRIES.sort((a,b)=>a.seq-b.seq);
   SEQ_PTR = 0;
   MEANINGS = Object.fromEntries(ENTRIES.map(e=>[e.word, e.meaning]));
-  console.log(`[CSV] ${ENTRIES.length}개 로드, seq 1→${ENTRIES.at(-1)?.seq||'-'}`);
+  console.log(`[CSV] ${ENTRIES.length}개 로드. seq 1→${ENTRIES.at(-1)?.seq||'-'}`);
 }
 
 /* ===== 상태/DOM ===== */
@@ -177,7 +189,7 @@ const hidInput=document.getElementById('hidInput');
 const scoreEl=document.getElementById('score'),levelEl=document.getElementById('level'),comboEl=document.getElementById('combo'),accEl=document.getElementById('acc'),hpEl=document.getElementById('hp');
 const hiscoreEl=document.getElementById('hiscore'),maxcomboEl=document.getElementById('maxcombo'),recentAccEl=document.getElementById('recentAcc');
 const targetWordEl=document.getElementById('targetWord'), targetMeaningEl=document.getElementById('targetMeaning');
-const pauseBtn=document.getElementById('pauseBtn'),restartBtn=document.getElementById('restartBtn'),muteBtn=document.getElementById('muteBtn'),daltonizeCheckbox=document.getElementById('daltonize');
+const pauseBtn=document.getElementById('pauseBtn'),restartBtn=document.getElementById('restartBtn'),muteBtn=document.getElementById('muteBtn');
 const bgmEl=document.getElementById('bgm'); const startBtn=document.getElementById('startBtn'); const startPopup=document.getElementById('startPopup');
 const csvFile=document.getElementById('csvFile'), loadCsvBtn=document.getElementById('loadCsvBtn');
 
@@ -211,7 +223,7 @@ function findNonOverlappingPosition(wordWidth){
   return playfield.x + Math.random()*(cw-wordWidth);
 }
 
-/* 단어 객체(정답 시 점멸 애니메이션) */
+/* 단어 객체(정답 시 점멸) */
 class FallingWord{
   constructor(text){
     this.text=text; this.fontSize=24; this.font=`${this.fontSize}px system-ui,Apple SD Gothic Neo,Noto Sans KR,sans-serif`;
@@ -219,14 +231,10 @@ class FallingWord{
     this.x=findNonOverlappingPosition(this.width);
     this.y=playfield.y - this.fontSize;
     this.baseSpeed=getLevelConfig(gameState.level).speed; this.speed=this.baseSpeed; this.age=0; this.isTarget=false; this.spawnTime=performance.now();
-    this.clearing=false;            // 정답 처리 시작
-    this.clearUntil=0;              // 제거 예정 시각(ms)
+    this.clearing=false; this.clearUntil=0;
   }
   update(dt){
-    if(this.clearing){
-      // 애니 중에도 살짝 떠 있게 유지(움직임 최소화)
-      return;
-    }
+    if(this.clearing) return;
     const d=Math.max(0,dt/1000);
     this.age+=d; this.speed=this.baseSpeed*(1+GAME_CONFIG.WORD_ACCELERATION*this.age);
     const pps=(this.speed/100)*window.innerHeight; this.y+=pps*d;
@@ -234,36 +242,47 @@ class FallingWord{
   draw(now){
     ctx.font=this.font;
     let color=this.isTarget?(gameState.isColorBlindMode?'#000':'#4f46e5'):(gameState.isColorBlindMode?'#4a5568':'#5a67d8');
-
-    // 점멸(깜빡) 효과: 300ms 동안 60ms 주기로 on/off
     if(this.clearing){
       const phase = Math.floor((now - (this.clearStart||now)) / 60) % 2;
       ctx.globalAlpha = phase ? 0.2 : 1.0;
     }
-
-    // 위험선 근처
     const danger=playfield.bottom-(canvas.height*.05);
     if(this.y>danger) color=gameState.isColorBlindMode?'#000':'#ff6b6b';
     ctx.fillStyle=color; ctx.fillText(this.text,this.x,this.y);
     if(this.isTarget && !this.clearing){ ctx.strokeStyle=color; ctx.lineWidth=2; ctx.strokeRect(this.x-5,this.y-this.fontSize-5,this.width+10,this.fontSize+10); }
-
-    if(this.clearing){ ctx.globalAlpha = 1; }
+    if(this.clearing){ ctx.globalAlpha=1; }
   }
   isAtBottom(){ return this.y>playfield.bottom; }
-  startClearing(){
-    this.clearing = true;
-    this.clearStart = performance.now();
-    this.clearUntil = this.clearStart + 300; // 0.3초 점멸 후 제거
-  }
+  startClearing(){ this.clearing=true; this.clearStart=performance.now(); this.clearUntil=this.clearStart+300; }
+}
+
+/* 레벨 허용 글자수 */
+function allowedLens(level){
+  if(level<=2) return new Set([2]);
+  if(level===3) return new Set([2,3]);
+  return new Set([2,3,4]);
 }
 
 /* 레벨/스폰 */
-function getLevelConfig(l){ if(l<=4) return GAME_CONFIG.LEVELS[l]; return {speed:22+2*(l-4),spawnInterval:Math.max(1.2-.05*(l-5),.8),maxWords:Math.min(6+Math.floor((l-5)/2),8)}}
+function getLevelConfig(l){
+  if(l<=4) return GAME_CONFIG.LEVELS[l];
+  return {speed:22+2*(l-4),spawnInterval:Math.max(1.2-.05*(l-5),.8),maxWords:Math.min(6+Math.floor((l-5)/2),8)};
+}
 function spawnNextBySeq(){
   if(!ENTRIES.length) return null;
-  const entry = ENTRIES[SEQ_PTR];
-  SEQ_PTR = (SEQ_PTR + 1) % ENTRIES.length;
-  return new FallingWord(entry.word);
+  const allow = allowedLens(gameState.level);
+  // seq 순서대로 돌면서 현재 레벨에서 허용되는 len만 선택
+  let tried = 0, idx = SEQ_PTR;
+  while(tried < ENTRIES.length){
+    const e = ENTRIES[idx];
+    if(allow.has(Number(e.len)||0)){
+      SEQ_PTR = (idx + 1) % ENTRIES.length;
+      return new FallingWord(e.word);
+    }
+    idx = (idx + 1) % ENTRIES.length;
+    tried++;
+  }
+  return null; // 현재 레벨에 맞는 단어가 없다면 스폰 건너뜀
 }
 function spawnWord(){
   const cfg=getLevelConfig(gameState.level), now=performance.now();
@@ -298,8 +317,7 @@ function handleWordClear(word){
   gameState.score+=calculateScore(word,clearTime);
   gameState.combo++; gameState.maxCombo=Math.max(gameState.maxCombo,gameState.combo);
   gameState.correctInputs++; clickPop();
-  // 즉시 제거 대신 점멸 시작
-  word.startClearing();
+  word.startClearing(); // 점멸 시작
   updateLevel(); updateUI();
 }
 function handleMiss(){ gameState.combo=0; gameState.hp--; errorTick(); if(gameState.hp<=0) gameOver(); updateUI(); }
@@ -314,10 +332,8 @@ function handleInput(e){
   if(e && e.key!=='Enter') return;
   const input=normalizeKey(hidInput.value); if(!input) return;
   gameState.totalInputs++;
-  // 타겟 먼저 체크
   const t = gameState.words.find(w=>w.isTarget);
   if(t && input===normalizeKey(t.text)){ handleWordClear(t); hidInput.value=''; return; }
-  // 그 외 단어도 허용
   for(const w of gameState.words){ if(input===normalizeKey(w.text)){ handleWordClear(w); hidInput.value=''; return; } }
   gameState.combo=0; errorTick(); hidInput.value=''; updateUI();
 }
@@ -379,7 +395,7 @@ function gameLoop(t){
     spawnWord();
     const now = performance.now();
     for(let i=gameState.words.length-1;i>=0;i--){
-      const w=gameState.words[i]; 
+      const w=gameState.words[i];
       w.update(dt); w.draw(now);
       if(!w.clearing && w.isAtBottom()){ gameState.words.splice(i,1); handleMiss(); updateTargetWord(); }
       else if(w.clearing && now >= w.clearUntil){ gameState.words.splice(i,1); updateTargetWord(); }
@@ -426,19 +442,22 @@ document.addEventListener('keydown',e=>{
 window.addEventListener('resize',()=>{ canvas.width=canvas.offsetWidth; canvas.height=canvas.offsetHeight; layoutPlayfield(); });
 
 /* CSV 업로드(파일 버튼) */
-loadCsvBtn.addEventListener('click', ()=>{
+document.getElementById('loadCsvBtn').addEventListener('click', ()=>{
   const f = csvFile.files?.[0];
   if(!f){ alert('CSV 파일을 선택해주세요.'); return; }
   const reader = new FileReader();
-  reader.onload = e => { loadFromCSVText(e.target.result); };
-  reader.readAsText(f, 'utf-8');
+  reader.onload = e => {
+    const buf = e.target.result;            // ArrayBuffer
+    const raw = decodeKorean(buf);
+    loadFromCSVText(raw);
+  };
+  reader.readAsArrayBuffer(f);
 });
 
 /* 시작 */
 async function initGame(){
   canvas.width=canvas.offsetWidth; canvas.height=canvas.offsetHeight; layoutPlayfield();
-  // 서버에서 열었으면 words2.csv 자동 시도
-  await tryFetchCSV();
+  await tryFetchCSV();      // 서버에서 열었을 때 자동 로드
   updateUI();
   requestAnimationFrame(gameLoop);
 }
