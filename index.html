@@ -15,6 +15,7 @@
   .row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
   #canvas{width:100%;flex:1;display:block;background:transparent;margin:10px}
   .badge{padding:6px 12px;border-radius:999px;background:linear-gradient(135deg,#ff9a9e 0%,#fecfef 100%);font-size:12px;font-weight:600;color:#fff;box-shadow:0 2px 8px rgba(0,0,0,.08)}
+  /* footer 글씨 14px로 상향 */
   footer{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;font-size:14px;color:#5a67d8;font-weight:500}
   .target{color:#4f46e5;font-weight:700}
   .game-over,.paused{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);background:rgba(255,255,255,.95);text-align:center;z-index:1000}
@@ -23,8 +24,6 @@
   .start-popup{position:fixed;inset:0;background:rgba(0,0,0,.8);display:flex;justify-content:center;align-items:center;z-index:2000}
   .start-content{background:rgba(255,255,255,.95);padding:46px;border-radius:28px;text-align:center;box-shadow:0 15px 40px rgba(0,0,0,.3);border:3px solid rgba(255,255,255,.5);color:#5a67d8;max-width:520px}
   .start-btn{background:linear-gradient(135deg,#667eea 0%,#764ba2 100%);border:none;color:#fff;padding:14px 28px;border-radius:24px;cursor:pointer;font-size:18px;font-weight:700;box-shadow:0 6px 20px rgba(0,0,0,.2);transition:.2s;margin-top:18px}
-  .filebar{display:flex;gap:8px;align-items:center}
-  input[type="file"]{font-size:12px}
 </style>
 </head>
 <body>
@@ -48,10 +47,7 @@
       <button class="btn" id="restartBtn">재시작</button>
       <button class="btn" id="muteBtn">음소거</button>
       <label class="stat" style="padding:6px 10px;border-radius:14px"><input type="checkbox" id="daltonize" /> 색약 모드</label>
-      <div class="filebar stat">
-        <input id="csvFile" type="file" accept=".csv" />
-        <button class="btn" id="loadCsvBtn" style="padding:6px 10px;border-radius:14px">CSV 업로드</button>
-      </div>
+      <!-- CSV 업로드 UI 삭제됨 -->
     </div>
   </header>
 
@@ -60,7 +56,7 @@
   <footer>
     <div>타겟: <span id="targetWord" class="target">-</span></div>
     <div>뜻: <span id="targetMeaning" class="target">-</span></div>
-    <div class="badge">단어 입력후 엔터</div>
+    <div class="badge">완성 글자 단위 입력</div>
   </footer>
 </div>
 
@@ -76,7 +72,7 @@
 <div id="startPopup" class="start-popup">
   <div class="start-content">
     <h2 style="margin-bottom:18px;font-size:28px"> 💜사고도구어 타자게임 ⌨️</h2>
-    <p style="font-size:16px;line-height:1.6;margin-bottom:14px">떨어지는 단어를 입력하면 사라져요!</p>
+    <p style="font-size:16px;line-height:1.6;margin-bottom:14px">CSV의 seq 순서대로 떨어집니다. (레벨: 1·2=2글자, 3=2·3글자, 4+=2·3·4글자)</p>
     <button class="start-btn" id="startBtn">🚀 게임 시작하기</button>
   </div>
 </div>
@@ -100,28 +96,21 @@ function normalizeKey(s){ return (s||'').normalize('NFC').replace(/\s+/g,'').tri
 
 /* ---- 인코딩 자동 판별(UTF-8 ↔ EUC-KR) ---- */
 function decodeKorean(buffer){
-  // 1) UTF-8 시도
   let txt = new TextDecoder('utf-8',{fatal:false}).decode(buffer);
   const badU = (txt.match(/\uFFFD/g)||[]).length;
   const hanU = (txt.match(/[가-힣]/g)||[]).length;
-
-  // 2) EUC-KR 시도
   let txtKR = '';
   try{ txtKR = new TextDecoder('euc-kr',{fatal:false}).decode(buffer);}catch(_){}
-
   if(!txtKR) return txt;
-
   const badK = (txtKR.match(/\uFFFD/g)||[]).length;
   const hanK = (txtKR.match(/[가-힣]/g)||[]).length;
-
-  // ‘�’가 적고 한글이 더 많은 쪽 선택
   if (badK < badU || hanK > hanU) return txtKR;
   return txt;
 }
 
 /* ---- CSV 파서(RFC4180 근접) ---- */
 function parseCSV(text, sep=','){
-  text = text.replace(/^\uFEFF/,''); // BOM 제거
+  text = text.replace(/^\uFEFF/,'');
   const rows=[]; let i=0, cur='', row=[], inQ=false;
   while(i<text.length){
     const c=text[i];
@@ -191,7 +180,6 @@ const hiscoreEl=document.getElementById('hiscore'),maxcomboEl=document.getElemen
 const targetWordEl=document.getElementById('targetWord'), targetMeaningEl=document.getElementById('targetMeaning');
 const pauseBtn=document.getElementById('pauseBtn'),restartBtn=document.getElementById('restartBtn'),muteBtn=document.getElementById('muteBtn');
 const bgmEl=document.getElementById('bgm'); const startBtn=document.getElementById('startBtn'); const startPopup=document.getElementById('startPopup');
-const csvFile=document.getElementById('csvFile'), loadCsvBtn=document.getElementById('loadCsvBtn');
 
 /* 플레이필드(라운드 박스+격자) */
 const playfield={x:0,y:0,w:0,h:0,bottom:0,r:22};
@@ -271,7 +259,6 @@ function getLevelConfig(l){
 function spawnNextBySeq(){
   if(!ENTRIES.length) return null;
   const allow = allowedLens(gameState.level);
-  // seq 순서대로 돌면서 현재 레벨에서 허용되는 len만 선택
   let tried = 0, idx = SEQ_PTR;
   while(tried < ENTRIES.length){
     const e = ENTRIES[idx];
@@ -282,7 +269,7 @@ function spawnNextBySeq(){
     idx = (idx + 1) % ENTRIES.length;
     tried++;
   }
-  return null; // 현재 레벨에 맞는 단어가 없다면 스폰 건너뜀
+  return null;
 }
 function spawnWord(){
   const cfg=getLevelConfig(gameState.level), now=performance.now();
@@ -317,7 +304,7 @@ function handleWordClear(word){
   gameState.score+=calculateScore(word,clearTime);
   gameState.combo++; gameState.maxCombo=Math.max(gameState.maxCombo,gameState.combo);
   gameState.correctInputs++; clickPop();
-  word.startClearing(); // 점멸 시작
+  word.startClearing();
   updateLevel(); updateUI();
 }
 function handleMiss(){ gameState.combo=0; gameState.hp--; errorTick(); if(gameState.hp<=0) gameOver(); updateUI(); }
@@ -403,26 +390,32 @@ function gameLoop(t){
   }
   requestAnimationFrame(gameLoop);
 }
-function startBGM(){ if(bgmEl){ bgmEl.volume=BGM_VOLUME; bgmEl.muted=gameState.isMuted; bgmEl.play().catch(()=>{});} }
+
+/* BGM: 현재 탭에서만 재생 */
+function canPlayBGM(){ return !document.hidden && gameState.isGameStarted && !gameState.isPaused && !gameState.isMuted; }
+function startBGM(){ if(!bgmEl) return; if(document.hidden || gameState.isMuted) return; bgmEl.volume=BGM_VOLUME; bgmEl.play().catch(()=>{}); }
 function pauseBGM(){ if(bgmEl) bgmEl.pause(); }
-function resumeBGM(){ if(bgmEl && !gameState.isMuted) bgmEl.play().catch(()=>{}); }
+function resumeBGM(){ if(!bgmEl) return; if(document.hidden || gameState.isMuted) return; bgmEl.play().catch(()=>{}); }
+document.addEventListener('visibilitychange',()=>{ if(document.hidden){ pauseBGM(); if(sfxCtx && sfxCtx.state==='running') sfxCtx.suspend().catch(()=>{});} else { if(canPlayBGM()) resumeBGM(); if(sfxCtx && sfxCtx.state==='suspended') sfxCtx.resume().catch(()=>{});} });
+window.addEventListener('blur', ()=>{ pauseBGM(); });
+window.addEventListener('focus',()=>{ if(canPlayBGM()) resumeBGM(); });
 
 /* 컨트롤 */
 function startGame(){
-  if(!ENTRIES.length){ alert('단어가 없습니다. words2.csv를 로드하거나 CSV 업로드 버튼을 사용하세요.'); return; }
+  if(!ENTRIES.length){ alert('단어가 없습니다. words2.csv를 같은 폴더에 두세요.'); return; }
   startPopup.style.display='none'; gameState.isGameStarted=true; hidInput.focus(); startBGM();
 }
 function pauseGame(){
   gameState.isPaused=!gameState.isPaused; pauseBtn.textContent=gameState.isPaused?'계속하기':'일시정지';
   if(gameState.isPaused){ pauseBGM(); const d=document.createElement('div'); d.className='paused'; d.id='pausedOverlay'; d.innerHTML='<h3>일시정지</h3><p>스페이스바 두 번으로 재시작</p>'; document.body.appendChild(d);}
-  else{ resumeBGM(); const d=document.getElementById('pausedOverlay'); if(d) d.remove(); hidInput.focus(); }
+  else{ if(canPlayBGM()) resumeBGM(); const d=document.getElementById('pausedOverlay'); if(d) d.remove(); hidInput.focus(); }
 }
 function restartGame(){
   const go=document.querySelector('.game-over'); if(go) go.remove();
   gameState={...gameState,score:0,level:1,combo:0,maxCombo:0,hp:GAME_CONFIG.INITIAL_HP,correctInputs:0,totalInputs:0,isGameOver:false,words:[],lastSpawnTime:0,spawnHistory:[],isGameStarted:true};
-  hidInput.value=''; pauseBtn.textContent='일시정지'; updateUI(); hidInput.focus(); resumeBGM();
+  hidInput.value=''; pauseBtn.textContent='일시정지'; updateUI(); hidInput.focus(); if(canPlayBGM()) resumeBGM();
 }
-function toggleMute(){ gameState.isMuted=!gameState.isMuted; if(bgmEl) bgmEl.muted=gameState.isMuted; muteBtn.textContent=gameState.isMuted?'음소거 해제':'음소거'; }
+function toggleMute(){ gameState.isMuted=!gameState.isMuted; if(bgmEl) bgmEl.muted=gameState.isMuted; muteBtn.textContent=gameState.isMuted?'음소거 해제':'음소거'; if(!gameState.isMuted && canPlayBGM()) resumeBGM(); }
 
 /* 이벤트 */
 hidInput.addEventListener('keydown',handleInput);
@@ -441,23 +434,10 @@ document.addEventListener('keydown',e=>{
 });
 window.addEventListener('resize',()=>{ canvas.width=canvas.offsetWidth; canvas.height=canvas.offsetHeight; layoutPlayfield(); });
 
-/* CSV 업로드(파일 버튼) */
-document.getElementById('loadCsvBtn').addEventListener('click', ()=>{
-  const f = csvFile.files?.[0];
-  if(!f){ alert('CSV 파일을 선택해주세요.'); return; }
-  const reader = new FileReader();
-  reader.onload = e => {
-    const buf = e.target.result;            // ArrayBuffer
-    const raw = decodeKorean(buf);
-    loadFromCSVText(raw);
-  };
-  reader.readAsArrayBuffer(f);
-});
-
 /* 시작 */
 async function initGame(){
   canvas.width=canvas.offsetWidth; canvas.height=canvas.offsetHeight; layoutPlayfield();
-  await tryFetchCSV();      // 서버에서 열었을 때 자동 로드
+  await tryFetchCSV();      // words2.csv 자동 로드
   updateUI();
   requestAnimationFrame(gameLoop);
 }
@@ -471,4 +451,3 @@ function errorTick(){ if(gameState.isMuted) return; const o=sfxCtx.createOscilla
 </script>
 </body>
 </html>
-
