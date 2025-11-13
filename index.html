@@ -29,13 +29,13 @@
   header,footer{padding:10px 12px}
   header{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
   .stat{background:rgba(255,255,255,.85);padding:8px 12px;border-radius:20px;font-size:14px;font-weight:600;color:#5a67d8;box-shadow:0 2px 8px rgba(0,0,0,.08);border:2px solid rgba(255,255,255,.35)}
-  .btn{background:linear-gradient(135deg,#667eea 0%,#764ba2 100%);border:none;color:#fff;padding:10px 16px;border-radius:25px;cursor:pointer;font-size:14px;font-weight:600;box-shadow:0 4px 12px rgba(0,0,0,.15);transition:.2s}
+  .btn{background:linear-gradient(135deg,#667eea 0%,#764ba2 100%);border:none;color:#fff;padding:10px 16px;border-radius:25px;cursor:pointer;font-size:14px;font-weight:600;box-shadow:0 4px 14px rgba(0,0,0,.15);transition:.2s}
   .btn:hover{transform:translateY(-2px)}
   .row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
   #canvas{width:100%;flex:1;display:block;background:transparent;margin:10px}
-  .badge{padding:6px 12px;border-radius:999px;background:linear-gradient(135deg,#ff9a9e 0%,#fecfef 100%);font-size:12px;font-weight:600;color:#fff;box-shadow:0 2px 8px rgba(0,0,0,.08)}
+  .badge{padding:6px 14px;border-radius:999px;background:linear-gradient(135deg,#ff9a9e 0%,#fecfef 100%);font-size:14px;font-weight:600;color:#fff;box-shadow:0 2px 8px rgba(0,0,0,.08)}
   /* footer 글씨 14px로 상향 */
-  footer{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;font-size:14px;color:#5a67d8;font-weight:500}
+  footer{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;font-size:16px;color:#5a67d8;font-weight:500}
   .target{color:#4f46e5;font-weight:700}
   .game-over,.paused{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);background:rgba(255,255,255,.95);text-align:center;z-index:1000}
   .game-over{padding:36px;border-radius:24px;box-shadow:0 10px 30px rgba(0,0,0,.2);border:3px solid #ff6b6b;color:#ff4757}
@@ -487,3 +487,4 @@ function errorTick(){ if(gameState.isMuted) return; const o=sfxCtx.createOscilla
 </script>
 </body>
 </html>
+
