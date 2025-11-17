@@ -288,24 +288,18 @@ function allowedLens(level){
 }
 
 /* 레벨/스폰 */
-function getLevelConfig(l){
-  if(l<=4) return GAME_CONFIG.LEVELS[l];
-  return {speed:22+2*(l-4),spawnInterval:Math.max(1.2-.05*(l-5),.8),maxWords:Math.min(6+Math.floor((l-5)/2),8)};
-}
 function spawnNextBySeq(){
   if(!ENTRIES.length) return null;
+
+  // 현재 레벨에서 허용되는 글자수(1~2레벨은 2글자만)
   const allow = allowedLens(gameState.level);
-  let tried = 0, idx = SEQ_PTR;
-  while(tried < ENTRIES.length){
-    const e = ENTRIES[idx];
-    if(allow.has(Number(e.len)||0)){
-      SEQ_PTR = (idx + 1) % ENTRIES.length;
-      return new FallingWord(e.word);
-    }
-    idx = (idx + 1) % ENTRIES.length;
-    tried++;
-  }
-  return null;
+
+  // 허용 글자수에 해당하는 단어들만 모아 랜덤 선택
+  const pool = ENTRIES.filter(e => allow.has(Number(e.len) || 0));
+  if(!pool.length) return null;
+
+  const e = pool[Math.floor(Math.random() * pool.length)];
+  return new FallingWord(e.word);
 }
 function spawnWord(){
   const cfg=getLevelConfig(gameState.level), now=performance.now();
@@ -625,4 +619,5 @@ ChatGPT의 말:
 선택된 파일 없음선택된 파일 없음
 ChatGPT는 실수를 할 수 있습니다. 중요한 정보는 재차 확인하세요.
 ChatGPT가 아직 응답을 생성 중입니다…
+
 
