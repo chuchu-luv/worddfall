@@ -34,7 +34,6 @@
   .row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
   #canvas{width:100%;flex:1;display:block;background:transparent;margin:10px}
   .badge{padding:6px 12px;border-radius:999px;background:linear-gradient(135deg,#ff9a9e 0%,#fecfef 100%);font-size:12px;font-weight:600;color:#fff;box-shadow:0 2px 8px rgba(0,0,0,.08)}
-  /* footer 글씨 14px로 상향 */
   footer{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;font-size:14px;color:#5a67d8;font-weight:500}
   .target{color:#4f46e5;font-weight:700}
   .game-over,.paused{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);background:rgba(255,255,255,.95);text-align:center;z-index:1000}
@@ -68,7 +67,6 @@
       <button class="btn" id="restartBtn">재시작</button>
       <button class="btn" id="muteBtn">음소거</button>
       <label class="stat" style="padding:6px 10px;border-radius:14px"><input type="checkbox" id="daltonize" /> 색약 모드</label>
-      <!-- CSV 업로드 UI 삭제됨 -->
     </div>
   </header>
 
@@ -93,7 +91,7 @@
   <div style="margin-top:8px;font-size:11px;color:#8b5cf6;font-weight:600">💡 스페이스바 두 번 연속: 일시정지/재시작</div>
 </div>
 
-<!-- 시작 팝업 문구 수정 -->
+<!-- 시작 팝업 -->
 <div id="startPopup" class="start-popup">
   <div class="start-content">
     <h2 style="margin-bottom:18px;font-size:28px;font-family:'Hakgyoansim Monggeulmonggeul','Hakgyoansim Geurimilgi',Apple SD Gothic Neo,Noto Sans KR,system-ui,sans-serif">
@@ -116,14 +114,19 @@
 /* ===== 설정 ===== */
 const GAME_CONFIG = {
   INITIAL_HP:5, WORD_ACCELERATION:.12, SPAWN_HISTORY_TIME:2000,
-  LEVELS:{1:{speed:10,spawnInterval:2.2,maxWords:2},2:{speed:13,spawnInterval:1.9,maxWords:3},3:{speed:16,spawnInterval:1.6,maxWords:4},4:{speed:20,spawnInterval:1.4,maxWords:5}},
+  LEVELS:{
+    1:{speed:6,spawnInterval:2.8,maxWords:2},   // 레벨1 느리게
+    2:{speed:13,spawnInterval:1.9,maxWords:3},
+    3:{speed:16,spawnInterval:1.6,maxWords:4},
+    4:{speed:20,spawnInterval:1.4,maxWords:5}
+  },
   SCORE:{BASE:10,PER_CHAR:2,SPEED_BONUS_MAX:2.0,SPEED_BONUS_MULT:5,PERFECT_BONUS:5,COMBO_THRESHOLD:10,COMBO_MULTIPLIER:.2}
 };
 const BGM_VOLUME=.3;
 
 /* ===== 데이터(SEQ 모드) ===== */
 let ENTRIES = [];        // {seq, word, meaning, len}
-let SEQ_PTR = 0;         // 다음에 뿌릴 인덱스
+let SEQ_PTR = 0;         // (랜덤 모드에서는 안 써도 됨)
 let MEANINGS = {};       // wordNorm -> meaning
 
 /* ===== 유틸 ===== */
@@ -197,7 +200,7 @@ function loadFromCSVText(raw){
   ENTRIES.sort((a,b)=>a.seq-b.seq);
   SEQ_PTR = 0;
   MEANINGS = Object.fromEntries(ENTRIES.map(e=>[e.word, e.meaning]));
-  console.log([CSV] ${ENTRIES.length}개 로드. seq 1→${ENTRIES.at(-1)?.seq||'-'});
+  console.log(`[CSV] ${ENTRIES.length}개 로드. seq 1→${ENTRIES.at(-1)?.seq||'-'}`);
 }
 
 /* ===== 상태/DOM ===== */
@@ -250,7 +253,7 @@ function findNonOverlappingPosition(wordWidth){
 class FallingWord{
   constructor(text){
     this.text=text; this.fontSize=24;
-    this.font=${this.fontSize}px 'Hakgyoansim Geurimilgi',Apple SD Gothic Neo,Noto Sans KR,system-ui,sans-serif;
+    this.font=`${this.fontSize}px 'Hakgyoansim Geurimilgi',Apple SD Gothic Neo,Noto Sans KR,system-ui,sans-serif`;
     ctx.font=this.font; const m=ctx.measureText(text); this.width=m.width;
     this.x=findNonOverlappingPosition(this.width);
     this.y=playfield.y - this.fontSize;
@@ -282,25 +285,29 @@ class FallingWord{
 
 /* 레벨 허용 글자수 */
 function allowedLens(level){
-  if(level<=2) return new Set([2]);
+  if(level<=2) return new Set([2]);       // 1~2레벨: 2글자만
   if(level===3) return new Set([2,3]);
   return new Set([2,3,4]);
 }
 
 /* 레벨/스폰 */
+function getLevelConfig(l){
+  if(l<=4) return GAME_CONFIG.LEVELS[l];
+  return {speed:22+2*(l-4),spawnInterval:Math.max(1.2-.05*(l-5),.8),maxWords:Math.min(6+Math.floor((l-5)/2),8)};
+}
+
+// ★ 랜덤 스폰: 허용 글자수 안에서 랜덤으로 선택
 function spawnNextBySeq(){
   if(!ENTRIES.length) return null;
 
-  // 현재 레벨에서 허용되는 글자수(1~2레벨은 2글자만)
   const allow = allowedLens(gameState.level);
-
-  // 허용 글자수에 해당하는 단어들만 모아 랜덤 선택
   const pool = ENTRIES.filter(e => allow.has(Number(e.len) || 0));
   if(!pool.length) return null;
 
   const e = pool[Math.floor(Math.random() * pool.length)];
   return new FallingWord(e.word);
 }
+
 function spawnWord(){
   const cfg=getLevelConfig(gameState.level), now=performance.now();
   if(gameState.words.length<cfg.maxWords && now - gameState.lastSpawnTime > cfg.spawnInterval*1000){
@@ -342,10 +349,12 @@ function updateLevel(){ const nl=Math.floor(gameState.correctInputs/20)+1; if(nl
 function gameOver(){
   gameState.isGameOver=true; pauseBGM(); saveGameStats();
   const d=document.createElement('div'); d.className='game-over';
-  d.innerHTML=<h2>게임 오버!</h2><p>최종 점수: ${gameState.score}</p><p>최대 콤보: ${gameState.maxCombo}</p><p>정확도: ${Math.round((gameState.correctInputs/Math.max(gameState.totalInputs,1))*100)}%</p><button class="btn" onclick="restartGame()">다시 시작</button>;
+  d.innerHTML=`<h2>게임 오버!</h2><p>최종 점수: ${gameState.score}</p><p>최대 콤보: ${gameState.maxCombo}</p><p>정확도: ${Math.round((gameState.correctInputs/Math.max(gameState.totalInputs,1))*100)}%</p><button class="btn" onclick="restartGame()">다시 시작</button>`;
   document.body.appendChild(d);
 }
 function handleInput(e){
+  // 일시정지/게임오버/시작 전에는 입력 무시 → 점수 안 오르도록
+  if(gameState.isPaused || gameState.isGameOver || !gameState.isGameStarted) return;
   if(e && e.key!=='Enter') return;
   const input=normalizeKey(hidInput.value); if(!input) return;
   gameState.totalInputs++;
@@ -433,17 +442,34 @@ window.addEventListener('focus',()=>{ if(canPlayBGM()) resumeBGM(); });
 /* 컨트롤 */
 function startGame(){
   if(!ENTRIES.length){ alert('단어가 없습니다. words2.csv를 같은 폴더에 두세요.'); return; }
-  startPopup.style.display='none'; gameState.isGameStarted=true; hidInput.focus(); startBGM();
+  startPopup.style.display='none';
+  gameState.isGameStarted=true;
+  hidInput.disabled=false;
+  hidInput.focus();
+  startBGM();
 }
 function pauseGame(){
   gameState.isPaused=!gameState.isPaused; pauseBtn.textContent=gameState.isPaused?'계속하기':'일시정지';
-  if(gameState.isPaused){ pauseBGM(); const d=document.createElement('div'); d.className='paused'; d.id='pausedOverlay'; d.innerHTML='<h3>일시정지</h3><p>스페이스바 두 번으로 재시작</p>'; document.body.appendChild(d);}
-  else{ if(canPlayBGM()) resumeBGM(); const d=document.getElementById('pausedOverlay'); if(d) d.remove(); hidInput.focus(); }
+  if(gameState.isPaused){
+    pauseBGM();
+    hidInput.disabled = true;
+    const d=document.createElement('div'); d.className='paused'; d.id='pausedOverlay'; d.innerHTML='<h3>일시정지</h3><p>스페이스바 두 번으로 재시작</p>'; document.body.appendChild(d);
+  } else {
+    if(canPlayBGM()) resumeBGM();
+    const d=document.getElementById('pausedOverlay'); if(d) d.remove();
+    hidInput.disabled = false;
+    hidInput.focus();
+  }
 }
 function restartGame(){
   const go=document.querySelector('.game-over'); if(go) go.remove();
   gameState={...gameState,score:0,level:1,combo:0,maxCombo:0,hp:GAME_CONFIG.INITIAL_HP,correctInputs:0,totalInputs:0,isGameOver:false,words:[],lastSpawnTime:0,spawnHistory:[],isGameStarted:true};
-  hidInput.value=''; pauseBtn.textContent='일시정지'; updateUI(); hidInput.focus(); if(canPlayBGM()) resumeBGM();
+  hidInput.value='';
+  pauseBtn.textContent='일시정지';
+  updateUI();
+  hidInput.disabled=false;
+  hidInput.focus();
+  if(canPlayBGM()) resumeBGM();
 }
 function toggleMute(){ gameState.isMuted=!gameState.isMuted; if(bgmEl) bgmEl.muted=gameState.isMuted; muteBtn.textContent=gameState.isMuted?'음소거 해제':'음소거'; if(!gameState.isMuted && canPlayBGM()) resumeBGM(); }
 
@@ -471,7 +497,10 @@ async function initGame(){
   updateUI();
   requestAnimationFrame(gameLoop);
 }
-window.addEventListener('load',()=>{ initGame(); startBtn.addEventListener('click',startGame); });
+window.addEventListener('load',()=>{
+  initGame();
+  startBtn.addEventListener('click',startGame);
+});
 
 /* 효과음 */
 const AC=window.AudioContext||window.webkitAudioContext; const sfxCtx=new AC();
@@ -481,143 +510,3 @@ function errorTick(){ if(gameState.isMuted) return; const o=sfxCtx.createOscilla
 </script>
 </body>
 </html>
-ChatGPT의 말:
-사고도구어 타자게임 코드 수정본
-· html
-<!DOCTYPE html>
-<html lang="ko">
-<head>
-<meta charset="utf-8" />
-<meta name="viewport" content="width=device-width,initial-scale=1" />
-<title>사고도구어 타자게임</title>
-<style>
-  /* 폰트 설정 */
-  @font-face{
-    font-family:'Hakgyoansim Monggeulmonggeul';
-    src:url('HakgyoansimMonggeulmonggeulR.ttf') format('truetype');
-    font-weight:400;
-    font-style:normal;
-  }
-  @font-face{
-    font-family:'Hakgyoansim Geurimilgi';
-    src:url('Hakgyoansim Geurimilgi TTF R.ttf') format('truetype');
-    font-weight:400;
-    font-style:normal;
-  }
-
-  html,body{
-    margin:0;padding:0;height:100%;
-    font-family:'Hakgyoansim Geurimilgi',Apple SD Gothic Neo,Noto Sans KR,system-ui,sans-serif;
-    background:linear-gradient(135deg,#B2ECEF 0%,#D4E6F8 33%,#DCDBFA 66%,#D3B7FD 100%);
-    color:#2c3e50
-  }
-  .wrap{display:flex;flex-direction:column;height:100%}
-  header,footer{padding:10px 12px}
-  header{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
-  .stat{background:rgba(255,255,255,.85);padding:8px 12px;border-radius:20px;font-size:14px;font-weight:600;color:#5a67d8;box-shadow:0 2px 8px rgba(0,0,0,.08);border:2px solid rgba(255,255,255,.35)}
-  .btn{background:linear-gradient(135deg,#667eea 0%,#764ba2 100%);border:none;color:#fff;padding:10px 16px;border-radius:25px;cursor:pointer;font-size:14px;font-weight:600;box-shadow:0 4px 12px rgba(0,0,0,.15);transition:.2s}
-  .btn:hover{transform:translateY(-2px)}
-  .row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
-  #canvas{width:100%;flex:1;display:block;background:transparent;margin:10px}
-  .badge{padding:6px 12px;border-radius:999px;background:linear-gradient(135deg,#ff9a9e 0%,#fecfef 100%);font-size:12px;font-weight:600;color:#fff;box-shadow:0 2px 8px rgba(0,0,0,.08)}
-  /* footer 글씨 14px로 상향 */
-  footer{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;font-size:14px;color:#5a67d8;font-weight:500}
-  .target{color:#4f46e5;font-weight:700}
-  .game-over,.paused{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);background:rgba(255,255,255,.95);text-align:center;z-index:1000}
-  .game-over{padding:36px;border-radius:24px;box-shadow:0 10px 30px rgba(0,0,0,.2);border:3px solid #ff6b6b;color:#ff4757}
-  .paused{padding:28px;border-radius:20px;box-shadow:0 8px 25px rgba(0,0,0,.15);border:3px solid rgba(255,255,255,.5);color:#5a67d8}
-  .start-popup{position:fixed;inset:0;background:rgba(0,0,0,.8);display:flex;justify-content:center;align-items:center;z-index:2000}
-  .start-content{background:rgba(255,255,255,.95);padding:46px;border-radius:28px;text-align:center;box-shadow:0 15px 40px rgba(0,0,0,.3);border:3px solid rgba(255,255,255,.5);color:#5a67d8;max-width:520px}
-  .start-btn{background:linear-gradient(135deg,#667eea 0%,#764ba2 100%);border:none;color:#fff;padding:14px 28px;border-radius:24px;cursor:pointer;font-size:18px;font-weight:700;box-shadow:0 6px 20px rgba(0,0,0,.2);transition:.2s;margin-top:18px}
-</style>
-</head>
-<body>
-<div class="wrap">
-  <div style="text-align:center;padding:14px 0;background:rgba(255,255,255,.1);margin-bottom:8px">
-    <h1 style="margin:0;font-size:24px;font-weight:800;color:#5a67d8;text-shadow:0 2px 4px rgba(0,0,0,.1);font-family:'Hakgyoansim Monggeulmonggeul','Hakgyoansim Geurimilgi',Apple SD Gothic Neo,Noto Sans KR,system-ui,sans-serif">
-      💜사고도구어 타자게임💙
-    </h1>
-  </div>
-  <header>
-    <div class="row">
-      <div class="stat">점수 <span id="score">0</span></div>
-      <div class="stat">레벨 <span id="level">1</span></div>
-      <div class="stat">콤보 <span id="combo">0</span></div>
-      <div class="stat">정확도 <span id="acc">100%</span></div>
-      <div class="stat">HP <span id="hp">5</span></div>
-      <div class="stat">최고점수 <span id="hiscore">0</span></div>
-
-57s 동안 생각함
-<!DOCTYPE html>
-<html lang="ko">
-<head>
-<meta charset="utf-8" />
-<meta name="viewport" content="width=device-width,initial-scale=1" />
-<title>사고도구어 타자게임</title>
-<style>
-  /* 폰트 설정 */
-  @font-face{
-    font-family:'Hakgyoansim Monggeulmonggeul';
-    src:url('HakgyoansimMonggeulmonggeulR.ttf') format('truetype');
-    font-weight:400;
-    font-style:normal;
-  }
-  @font-face{
-    font-family:'Hakgyoansim Geurimilgi';
-    src:url('Hakgyoansim Geurimilgi TTF R.ttf') format('truetype');
-    font-weight:400;
-    font-style:normal;
-  }
-
-  html,body{
-    margin:0;padding:0;height:100%;
-    font-family:'Hakgyoansim Geurimilgi',Apple SD Gothic Neo,Noto Sans KR,system-ui,sans-serif;
-    background:linear-gradient(135deg,#B2ECEF 0%,#D4E6F8 33%,#DCDBFA 66%,#D3B7FD 100%);
-    color:#2c3e50
-  }
-  .wrap{display:flex;flex-direction:column;height:100%}
-  header,footer{padding:10px 12px}
-  header{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
-  .stat{background:rgba(255,255,255,.85);padding:8px 12px;border-radius:20px;font-size:14px;font-weight:600;color:#5a67d8;box-shadow:0 2px 8px rgba(0,0,0,.08);border:2px solid rgba(255,255,255,.35)}
-  .btn{background:linear-gradient(135deg,#667eea 0%,#764ba2 100%);border:none;color:#fff;padding:10px 16px;border-radius:25px;cursor:pointer;font-size:14px;font-weight:600;box-shadow:0 4px 12px rgba(0,0,0,.15);transition:.2s}
-  .btn:hover{transform:translateY(-2px)}
-  .row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
-  #canvas{width:100%;flex:1;display:block;background:transparent;margin:10px}
-  .badge{padding:6px 12px;border-radius:999px;background:linear-gradient(135deg,#ff9a9e 0%,#fecfef 100%);font-size:12px;font-weight:600;color:#fff;box-shadow:0 2px 8px rgba(0,0,0,.08)}
-  /* footer 글씨 14px로 상향 */
-  footer{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;font-size:14px;color:#5a67d8;font-weight:500}
-  .target{color:#4f46e5;font-weight:700}
-  .game-over,.paused{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);background:rgba(255,255,255,.95);text-align:center;z-index:1000}
-  .game-over{padding:36px;border-radius:24px;box-shadow:0 10px 30px rgba(0,0,0,.2);border:3px solid #ff6b6b;color:#ff4757}
-  .paused{padding:28px;border-radius:20px;box-shadow:0 8px 25px rgba(0,0,0,.15);border:3px solid rgba(255,255,255,.5);color:#5a67d8}
-  .start-popup{position:fixed;inset:0;background:rgba(0,0,0,.8);display:flex;justify-content:center;align-items:center;z-index:2000}
-  .start-content{background:rgba(255,255,255,.95);padding:46px;border-radius:28px;text-align:center;box-shadow:0 15px 40px rgba(0,0,0,.3);border:3px solid rgba(255,255,255,.5);color:#5a67d8;max-width:520px}
-  .start-btn{background:linear-gradient(135deg,#667eea 0%,#764ba2 100%);border:none;color:#fff;padding:14px 28px;border-radius:24px;cursor:pointer;font-size:18px;font-weight:700;box-shadow:0 6px 20px rgba(0,0,0,.2);transition:.2s;margin-top:18px}
-</style>
-</head>
-<body>
-<div class="wrap">
-  <div style="text-align:center;padding:14px 0;background:rgba(255,255,255,.1);margin-bottom:8px">
-    <h1 style="margin:0;font-size:24px;font-weight:800;color:#5a67d8;text-shadow:0 2px 4px rgba(0,0,0,.1);font-family:'Hakgyoansim Monggeulmonggeul','Hakgyoansim Geurimilgi',Apple SD Gothic Neo,Noto Sans KR,system-ui,sans-serif">
-      💜사고도구어 타자게임💙
-    </h1>
-  </div>
-  <header>
-    <div class="row">
-      <div class="stat">점수 <span id="score">0</span></div>
-      <div class="stat">레벨 <span id="level">1</span></div>
-      <div class="stat">콤보 <span id="combo">0</span></div>
-      <div class="stat">정확도 <span id="acc">100%</span></div>
-      <div class="stat">HP <span id="hp">5</span></div>
-      <div class="stat">최고점수 <span id="hiscore">0</span></div>
-      <div class="stat">최대콤보 <span id="maxcombo">0</span></div>
-      <div class="stat">최근정확도(5판) <span id="rec
-
-
-
-
-선택된 파일 없음선택된 파일 없음
-ChatGPT는 실수를 할 수 있습니다. 중요한 정보는 재차 확인하세요.
-ChatGPT가 아직 응답을 생성 중입니다…
-
-
